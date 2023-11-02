@@ -1,54 +1,64 @@
-// Description: REST API for comments
-var express = require('express');
-var bodyParser = require('body-parser');
+//Create web server
+var express = require("express");
 var app = express();
-var port = process.env.PORT || 3000;
 
-// Create in-memory data store
-var comments = [
-    {id: 1, author: 'Pete Hunt', text: 'This is one comment'},
-    {id: 2, author: 'Jordan Walke', text: 'This is *another* comment'},
-    {id: 3, author: 'John Smith', text: 'This is *yet another* comment'}
-];
+//Create server
+var server = require("http").createServer(app);
 
-// Configure app to use bodyParser()
-// This will let us get the data from a POST
-app.use(bodyParser.urlencoded({extended: true}));
-app.use(bodyParser.json());
+//Create socket io server
+var io = require("socket.io")(server);
 
-// Set up routing
-var router = express.Router();
+//Create mysql connection
+var mysql = require("mysql");
 
-// Middleware to use for all requests
-router.use(function (req, res, next) {
-    console.log('Request received');
-    next();
+//Create connection to database
+var connection = mysql.createConnection({
+    host: "localhost",
+    user: "root",
+    password: "password",
+    database: "comments"
 });
 
-// GET /comments
-router.get('/', function (req, res) {
-    res.json(comments);
-});
+//Connect to database
+connection.connect();
 
-// GET /comments/:id
-router.get('/:id', function (req, res) {
-    var comment = comments.find(function (comment) {
-        return comment.id == req.params.id;
+//Create server
+server.listen(3000);
+
+//Create route for comments
+app.get("/comments", function(req, res){
+    //Query database
+    connection.query("SELECT * FROM comments", function(err, data){
+        if(err){
+            console.log(err);
+        } else {
+            res.send(data);
+        }
     });
-    if (comment) {
-        res.json(comment);
-    } else {
-        res.status(404).json({message: 'Comment not found'});
-    }
 });
 
-// POST /comments
-router.post('/', function (req, res) {
-    var comment = req.body;
-    if (!comment.id) {
-        res.status(400).json({message: 'Bad request'});
-    } else {
-        comments.push(comment);
-        res.status(201).json({message: 'Comment created'});
-    }
+//Create socket io connection
+io.on("connection", function(socket){
+    //On connection, log to console
+    console.log("A user connected");
+
+    //On disconnect, log to console
+    socket.on("disconnect", function(){
+        console.log("A user disconnected");
+    });
+
+    //On comment, log to console
+    socket.on("comment", function(data){
+        console.log(data);
+        //Insert into database
+        connection.query("INSERT INTO comments SET ?", data, function(err, result){
+            if(err){
+                console.log(err);
+            } else {
+                console.log(result);
+                //Emit comment to all clients
+                io.emit("comment", data);
+            }
+        });
+    });
 });
